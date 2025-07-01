@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JavaScript Execution Visualizer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .execution-block {
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .execution-block.active {
+            background-color: #EFF6FF;
+            transform: scale(1.02);
+            box-shadow: 0 6px 8px rgba(59, 130, 246, 0.2);
+        }
+        .execution-block.executing {
+            animation: pulse 1.5s infinite;
+        }
+        .variable-box {
+            transition: all 0.2s ease;
+        }
+        .variable-box.changed {
+            background-color: #FEF3C7;
+            animation: highlight 1s;
+        }
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(59, 130, 246, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
+        }
+        @keyframes highlight {
+            0% { background-color: #FEF3C7; }
+            100% { background-color: #F9FAFB; }
+        }
+        .stack-animation {
+            transition: all 0.5s ease;
+        }
+        .console-message {
+            font-family: monospace;
+            white-space: pre;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+        <header class="mb-12">
+            <h1 class="text-4xl font-bold text-center text-blue-700 mb-4">JavaScript Execution Visualizer</h1>
+            <p class="text-lg text-center text-gray-600 max-w-3xl mx-auto">
+                Step-by-step visualization of how JavaScript executes code in the engine, showing the call stack, memory allocation, scope chain, and execution context.
+            </p>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
+            <!-- Code Editor -->
+            <div class="lg:col-span-2 bg-white rounded-xl shadow-md p-6">
+                <h2 class="text-2xl font-semibold text-gray-800 mb-4">Code Execution</h2>
+                <div class="mb-6">
+                    <textarea id="codeInput" class="w-full h-64 p-4 border border-gray-300 rounded-lg font-mono text-sm">function outer() {
+    let outerVar = 'Outer variable';
+    
+    function inner() {
+        let innerVar = 'Inner variable';
+        console.log(`${outerVar} - ${innerVar}`);
+    }
+    
+    return inner;
+}
+
+const demoFunc = outer();
+demoFunc();</textarea>
+                </div>
+                <div class="flex justify-between">
+                    <button id="stepBtn" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg">Step Through</button>
+                    <button id="runBtn" class="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg">Run All</button>
+                    <button id="resetBtn" class="bg-gray-600 hover:bg-gray-700 text-white px-6 py-2 rounded-lg">Reset</button>
+                </div>
+            </div>
+
+            <!-- Execution Context Diagram -->
+            <div class="bg-white rounded-xl shadow-md p-6">
+                <h2 class="text-2xl font-semibold text-gray-800 mb-4">Execution Context</h2>
+                <div class="space-y-4">
+                    <img src="https://placehold.co/600x400" alt="Diagram showing JavaScript execution context with global, outer, and inner contexts stacked vertically" />
+                    <div class="bg-gray-100 p-4 rounded-lg text-sm">
+                        <p><span class="font-semibold">Global Context:</span> Base execution context (this === window)</p>
+                        <p><span class="font-semibold">Function Context:</span> Created per function call</p>
+                        <p><span class="font-semibold">Scope Chain:</span> Links nested execution contexts</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Visualization Sections -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <!-- Call Stack -->
+            <div class="bg-white rounded-xl shadow-md p-6">
+                <h2 class="text-2xl font-semibold text-gray-800 mb-4">Call Stack</h2>
+                <div id="callStack" class="border border-gray-200 rounded-lg p-4 min-h-48 space-y-2">
+                    <div class="text-center text-gray-500 py-4">Call stack will appear here...</div>
+                </div>
+                <div class="mt-4 bg-blue-50 p-4 rounded-lg text-sm">
+                    <p>The call stack is a LIFO (Last-In-First-Out) structure that tracks function execution order.</p>
+                    <p class="mt-2">When a function is called, it's pushed onto the stack, and when it returns, it's popped off.</p>
+                </div>
+            </div>
+
+            <!-- Scope Chain and Variables -->
+            <div class="bg-white rounded-xl shadow-md p-6">
+                <h2 class="text-2xl font-semibold text-gray-800 mb-4">Scope Chain & Variables</h2>
+                <div id="scopeChain" class="space-y-4">
+                    <div class="border border-gray-200 rounded-lg p-4 space-y-2 execution-block">
+                        <h3 class="font-semibold text-gray-700">Global Scope</h3>
+                        <div id="globalVariables" class="space-y-2">
+                            <div class="variable-box px-3 py-1 bg-gray-100 rounded text-sm font-mono">demoFunc: undefined</div>
+                        </div>
+                    </div>
+                    <div class="border border-gray-200 rounded-lg p-4 space-y-2 execution-block">
+                        <h3 class="font-semibold text-gray-700">Lexical Scope</h3>
+                        <div id="lexicalVariables" class="space-y-2 text-sm text-gray-500">
+                            (Will be populated during execution)
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-4 bg-green-50 p-4 rounded-lg text-sm">
+                    <p>JavaScript uses lexical scoping - variables are accessible within their own scope and all nested scopes.</p>
+                    <p class="mt-2">Closures maintain references to outer variables even after outer functions return.</p>
+                </div>
+            </div>
+
+            <!-- Heap & Memory -->
+            <div class="bg-white rounded-xl shadow-md p-6">
+                <h2 class="text-2xl font-semibold text-gray-800 mb-4">Memory Heap</h2>
+                <div id="memoryHeap" class="border border-gray-200 rounded-lg p-4 min-h-48 flex flex-wrap gap-3">
+                    <div class="text-center text-gray-500 py-4 w-full">Heap allocations will appear here...</div>
+                </div>
+                <div class="mt-4 bg-purple-50 p-4 rounded-lg text-sm">
+                    <p>The heap is where objects, functions, and complex data types are stored.</p>
+                    <p class="mt-2">Primitives are stored in the execution context, while reference types live in the heap.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Console Output -->
+        <div class="mt-8 bg-gray-800 rounded-xl shadow-md p-6">
+            <h2 class="text-xl font-semibold text-white mb-4">Console Output</h2>
+            <pre id="consoleOutput" class="bg-black text-green-400 p-4 rounded-lg max-h-48 overflow-y-auto"></pre>
+        </div>
+
+        <!-- Explanations -->
+        <div class="mt-12 bg-white rounded-xl shadow-md p-8">
+            <h2 class="text-3xl font-bold text-center text-blue-700 mb-6">How JavaScript Execution Works</h2>
+            
+            <div class="space-y-6">
+                <div class="flex flex-col md:flex-row gap-6">
+                    <div class="md:w-1/2">
+                        <h3 class="text-xl font-semibold text-gray-800 mb-3">Execution Context</h3>
+                        <p class="text-gray-600">JavaScript runs code in execution contexts. Each function call creates a new execution context with:</p>
+                        <ul class="list-disc pl-5 mt-2 space-y-1 text-gray-600">
+                            <li>A variable environment (let, const, var)</li>
+                            <li>A scope chain (reference to outer environments)</li>
+                            <li>A 'this' binding</li>
+                        </ul>
+                    </div>
+                    <div class="md:w-1/2">
+                        <img src="https://placehold.co/600x300" alt="Visual representation of JavaScript execution contexts showing global context encompassing multiple function contexts" />
+                    </div>
+                </div>
+
+                <div class="flex flex-col md:flex-row gap-6">
+                    <div class="md:w-1/2">
+                        <img src="https://placehold.co/600x300" alt="Diagram showing JavaScript event loop with callback queue and microtask queue feeding into the call stack" />
+                    </div>
+                    <div class="md:w-1/2">
+                        <h3 class="text-xl font-semibold text-gray-800 mb-3">Memory Management</h3>
+                        <p class="text-gray-600">JavaScript handles memory automatically through a garbage collector:</p>
+                        <ul class="list-disc pl-5 mt-2 space-y-1 text-gray-600">
+                            <li>Primitives (numbers, strings, booleans) are stored directly in the execution context</li>
+                            <li>Objects, arrays, and functions are stored in the memory heap</li>
+                            <li>Variables hold references to objects in the heap</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="flex flex-col md:flex-row gap-6">
+                    <div class="md:w-1/2">
+                        <h3 class="text-xl font-semibold text-gray-800 mb-3">Hoisting Behavior</h3>
+                        <p class="text-gray-600">JavaScript processes declarations before execution:</p>
+                        <ul class="list-disc pl-5 mt-2 space-y-1 text-gray-600">
+                            <li>Variable declarations (var) are hoisted with default <code>undefined</code></li>
+                            <li>Function declarations are hoisted with their definitions</li>
+                            <li><code>let</code> and <code>const</code> are in Temporal Dead Zone until declaration</li>
+                        </ul>
+                    </div>
+                    <div class="md:w-1/2">
+                        <img src="https://placehold.co/600x300" alt="Illustration showing JavaScript hoisting where variable declarations float to the top of their scope" />
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Execution state
+        const executionState = {
+            currentStep: -1,
+            executionSteps: [],
+            variables: {
+                global: {},
+                outer: {},
+                inner: {}
+            },
+            callStack: [],
+            heap: {},
+            consoleLogs: []
+        };
+
+        // DOM Elements
+        const codeInput = document.getElementById('codeInput');
+        const stepBtn = document.getElementById('stepBtn');
+        const runBtn = document.getElementById('runBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        const callStackEl = document.getElementById('callStack');
+        const scopeChainEl = document.getElementById('lexicalVariables');
+        const globalVarsEl = document.getElementById('globalVariables');
+        const memoryHeapEl = document.getElementById('memoryHeap');
+        const consoleOutputEl = document.getElementById('consoleOutput');
+
+        // Button event listeners
+        stepBtn.addEventListener('click', stepThroughCode);
+        runBtn.addEventListener('click', runAll);
+        resetBtn.addEventListener('click', resetVisualization);
+
+        function resetVisualization() {
+            executionState.currentStep = -1;
+            executionState.executionSteps = [];
+            executionState.variables = {
+                global: {},
+                outer: {},
+                inner: {}
+            };
+            executionState.callStack = [];
+            executionState.heap = {};
+            executionState.consoleLogs = [];
+            
+            callStackEl.innerHTML = '<div class="text-center text-gray-500 py-4">Call stack will appear here...</div>';
+            scopeChainEl.innerHTML = '(Will be populated during execution)';
+            globalVarsEl.innerHTML = '';
+            memoryHeapEl.innerHTML = '<div class="text-center text-gray-500 py-4 w-full">Heap allocations will appear here...</div>';
+            consoleOutputEl.textContent = '';
+            
+            document.querySelectorAll('.execution-block').forEach(el => {
+                el.classList.remove('active', 'executing');
+            });
+        }
+
+        function parseAndPrepareExecution() {
+            resetVisualization();
+            
+            // Simulate parsing the code and preparing execution steps
+            const code = codeInput.value;
+            
+            // These would normally be determined by parsing the actual code
+            executionState.executionSteps = [
+                { action: 'compile', scope: 'global', description: 'Compiling the script - hoisting function declarations' },
+                { action: 'execute', scope: 'global', description: 'Executing global context - evaluating variable declarations' },
+                { action: 'call', func: 'outer', scope: 'global', description: 'Calling outer() function - creating execution context' },
+                { action: 'exec', scope: 'outer', variable: 'outerVar', value: 'Outer variable', description: 'Declaring outerVar in outer scope' },
+                { action: 'call', func: 'inner', scope: 'outer', description: 'Calling inner() function - creating execution context' },
+                { action: 'exec', scope: 'inner', variable: 'innerVar', value: 'Inner variable', description: 'Declaring innerVar in inner scope' },
+                { action: 'log', message: 'Outer variable - Inner variable', description: 'Executing console.log()' },
+                { action: 'return', func: 'inner', scope: 'outer', description: 'Returning inner function from outer' },
+                { action: 'assign', variable: 'demoFunc', value: 'function', scope: 'global', description: 'Assigning inner function to demoFunc' },
+                { action: 'call', func: 'demoFunc', scope: 'global', description: 'Calling demoFunc() (which is inner)' },
+                { action: 'exec', scope: 'inner', variable: 'innerVar', value: 'Inner variable', description: 'Declaring innerVar in inner scope (again)' },
+                { action: 'log', message: 'Outer variable - Inner variable', description: 'Executing console.log() inside closure' },
+                { action: 'return', func: 'demoFunc', scope: 'global', description: 'Execution complete - returning from demoFunc' }
+            ];
+
+            // Initialize variables based on parse
+            executionState.variables.global = {};
+            executionState.variables.outer = {};
+            executionState.variables.inner = {};
+            
+            // Show initial state
+            updateVisualization();
+        }
+
+        function stepThroughCode() {
+            if (executionState.executionSteps.length === 0) {
+                parseAndPrepareExecution();
+            }
+
+            executionState.currentStep++;
+            
+            if (executionState.currentStep >= executionState.executionSteps.length) {
+                alert('Execution complete!');
+                executionState.currentStep = executionState.executionSteps.length - 1;
+                return;
+            }
+
+            const step = executionState.executionSteps[executionState.currentStep];
+            
+            // Update state based on step
+            switch (step.action) {
+                case 'compile':
+                    // Highlight global execution context
+                    break;
+                case 'execute':
+                    // Populate global variables
+                    break;
+                case 'call':
+                    // Push to call stack
+                    executionState.callStack.push(step.func);
+                    break;
+                case 'exec':
+                    // Update variable state
+                    if (step.scope in executionState.variables) {
+                        executionState.variables[step.scope][step.variable] = step.value;
+                    }
+                    break;
+                case 'log':
+                    // Add to console
+                    executionState.consoleLogs.push(step.message);
+                    break;
+                case 'return':
+                    // Pop from call stack
+                    executionState.callStack.pop();
+                    break;
+                case 'assign':
+                    // Update global variable
+                    executionState.variables.global[step.variable] = step.value;
+                    break;
+            }
+
+            updateVisualization();
+        }
+
+        function runAll() {
+            parseAndPrepareExecution();
+            
+            let interval = setInterval(() => {
+                if (executionState.currentStep >= executionState.executionSteps.length - 1) {
+                    clearInterval(interval);
+                    return;
+                }
+                stepThroughCode();
+            }, 1500);
+        }
+
+        function updateVisualization() {
+            // Update current executing block
+            document.querySelectorAll('.execution-block').forEach(el => {
+                el.classList.remove('active', 'executing');
+            });
+
+            const currentStep = executionState.executionSteps[executionState.currentStep];
+            if (currentStep && currentStep.scope) {
+                const activeElements = document.querySelectorAll(`#${currentStep.scope}Variables`);
+                if (activeElements.length > 0) {
+                    const parentBlock = activeElements[0].closest('.execution-block');
+                    if (parentBlock) {
+                        parentBlock.classList.add('active');
+                        setTimeout(() => {
+                            parentBlock.classList.add('executing');
+                            setTimeout(() => {
+                                parentBlock.classList.remove('executing');
+                            }, 1000);
+                        }, 100);
+                    }
+                }
+            }
+
+            // Update call stack visualization
+            callStackEl.innerHTML = '';
+            executionState.callStack.forEach((func, i) => {
+                const stackFrame = document.createElement('div');
+                stackFrame.className = 'bg-blue-100 p-3 rounded-lg text-sm font-mono mb-2 stack-animation';
+                stackFrame.textContent = `${i+1}. ${func}()`;
+                callStackEl.appendChild(stackFrame);
+            });
+
+            // Update variables display
+            globalVarsEl.innerHTML = '';
+            scopeChainEl.innerHTML = '';
+            
+            // Global variables
+            for (const [varName, value] of Object.entries(executionState.variables.global)) {
+                const varEl = document.createElement('div');
+                varEl.className = 'variable-box px-3 py-1 bg-gray-100 rounded text-sm font-mono mb-1';
+                varEl.textContent = `${varName}: ${value}`;
+                globalVarsEl.appendChild(varEl);
+            }
+
+            // Lexical scope variables
+            if (executionState.currentStep >= 2) { // After outer() call
+                const outerScope = document.createElement('div');
+                outerScope.className = 'space-y-2';
+                
+                const outerTitle = document.createElement('h4');
+                outerTitle.className = 'font-medium text-gray-700';
+                outerTitle.textContent = 'outer() scope';
+                outerScope.appendChild(outerTitle);
+                
+                for (const [varName, value] of Object.entries(executionState.variables.outer)) {
+                    const varEl = document.createElement('div');
+                    varEl.className = 'variable-box px-3 py-1 bg-gray-100 rounded text-sm font-mono mb-1';
+                    varEl.textContent = `${varName}: ${value}`;
+                    outerScope.appendChild(varEl);
+                }
+                
+                scopeChainEl.appendChild(outerScope);
+            }
+
+            if (executionState.currentStep >= 4) { // After inner() call
+                const innerScope = document.createElement('div');
+                innerScope.className = 'space-y-2';
+                
+                const innerTitle = document.createElement('h4');
+                innerTitle.className = 'font-medium text-gray-700';
+                innerTitle.textContent = 'inner() scope';
+                innerScope.appendChild(innerTitle);
+                
+                for (const [varName, value] of Object.entries(executionState.variables.inner)) {
+                    const varEl = document.createElement('div');
+                    varEl.className = 'variable-box px-3 py-1 bg-gray-100 rounded text-sm font-mono mb-1';
+                    varEl.textContent = `${varName}: ${value}`;
+                    innerScope.appendChild(varEl);
+                }
+                
+                scopeChainEl.appendChild(innerScope);
+            }
+
+            // Update memory heap visualization
+            memoryHeapEl.innerHTML = '';
+            const heapObjects = [
+                { type: 'Function', name: 'outer()', refs: ['outerVar'] },
+                { type: 'Function', name: 'inner()', refs: ['outerVar'] },
+                { type: 'String', value: 'Outer variable' },
+                { type: 'String', value: 'Inner variable' }
+            ];
+            
+            heapObjects.forEach(obj => {
+                const heapItem = document.createElement('div');
+                heapItem.className = 'bg-purple-100 p-2 rounded-lg text-xs font-mono';
+                
+                if (obj.type === 'Function') {
+                    heapItem.innerHTML = `<span class="font-semibold">${obj.type}:</span> ${obj.name}<br>`;
+                    if (obj.refs.length > 0) {
+                        heapItem.innerHTML += `<span class="text-gray-600">Closure variables: ${obj.refs.join(', ')}</span>`;
+                    }
+                } else {
+                    heapItem.innerHTML = `<span class="font-semibold">${obj.type}:</span> "${obj.value}"`;
+                }
+                
+                memoryHeapEl.appendChild(heapItem);
+            });
+
+            // Update console output
+            consoleOutputEl.textContent = executionState.consoleLogs.join('\n');
+        }
+    </script>
+</body>
+</html>
